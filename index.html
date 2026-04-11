@@ -110,6 +110,8 @@ body {
   font-family: 'DM Sans', sans-serif;
 }
 .theme-chip.selected { background: var(--teal); color: white; border-color: var(--teal); }
+.theme-chip.review-chip { border-color: var(--amber); color: var(--amber); background: var(--amber-light); }
+.theme-chip.review-chip.selected { background: var(--amber); color: white; border-color: var(--amber); }
 
 .input-label { font-size: 11px; font-weight: 500; color: var(--ink3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
 textarea {
@@ -331,6 +333,7 @@ textarea::placeholder { color: var(--ink3); font-style: italic; }
       <span class="theme-chip" onclick="selectTheme(this,'日常')">日常</span>
       <span class="theme-chip" onclick="selectTheme(this,'旅行')">旅行</span>
       <span class="theme-chip" onclick="selectTheme(this,'ニュース')">ニュース</span>
+      <span class="theme-chip review-chip" onclick="selectTheme(this,'復習')">復習</span>
     </div>
   </div>
 
@@ -496,6 +499,7 @@ function selectTheme(el, theme) {
   document.querySelectorAll('.theme-chip').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
   state.theme = theme;
+  document.getElementById('gen-btn').textContent = theme === '復習' ? '別の表現を選択する' : '＋ 新しい問題文を生成';
 }
 
 function showPage(name) {
@@ -524,9 +528,24 @@ async function callClaude(messages, system) {
 async function generateSentence() {
   const btn = document.getElementById('gen-btn');
   btn.disabled = true;
-  btn.textContent = '生成中...';
   document.getElementById('feedback-area').innerHTML = '';
   document.getElementById('user-translation').value = '';
+
+  // 復習モード：savedItems からランダム取得
+  if (state.theme === '復習') {
+    if (state.savedItems.length === 0) {
+      document.getElementById('jp-sentence').textContent = '「問題を生成」を押してください';
+      btn.disabled = false;
+      return;
+    }
+    const item = state.savedItems[Math.floor(Math.random() * state.savedItems.length)];
+    state.currentJp = item.jp;
+    document.getElementById('jp-sentence').textContent = item.jp;
+    btn.disabled = false;
+    return;
+  }
+
+  btn.textContent = '生成中...';
 
   if (!state.apiKey) {
     const samples = {
