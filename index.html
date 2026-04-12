@@ -198,6 +198,29 @@ textarea::placeholder { color: var(--ink3); font-style: italic; }
   font-family: 'DM Sans', sans-serif;
 }
 .next-btn:hover { border-color: var(--ink2); }
+.result-row { display: flex; gap: 8px; margin-top: 16px; }
+.result-btn {
+  flex: 1; padding: 12px; border-radius: 10px;
+  font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+  font-family: 'DM Sans', sans-serif;
+}
+.result-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.result-bad { border: 1px solid var(--red); background: var(--red-light); color: var(--red); }
+.result-bad:hover:not(:disabled) { background: var(--red); color: white; }
+.result-good { border: 1px solid var(--teal); background: var(--teal-light); color: var(--teal); }
+.result-good:hover:not(:disabled) { background: var(--teal); color: white; }
+.review-toggle {
+  display: flex; margin-bottom: 16px;
+  border: 1px solid var(--border); border-radius: 99px; overflow: hidden;
+}
+.toggle-btn {
+  flex: 1; padding: 8px 0; font-size: 12px; font-weight: 500;
+  border: none; background: none; color: var(--ink3);
+  cursor: pointer; transition: all 0.15s;
+  font-family: 'DM Sans', sans-serif;
+}
+.toggle-btn.active { background: var(--ink); color: var(--cream); }
 
 /* Review page */
 .review-empty {
@@ -378,6 +401,7 @@ let state = {
   currentJp: '',
   currentFeedback: null,
   theme: 'セキュリティ Biz',
+  reviewFilter: 'needs',
   savedItems: JSON.parse(localStorage.getItem('eikaiwa_saved') || '[]'),
 };
 
@@ -531,14 +555,15 @@ async function generateSentence() {
   document.getElementById('feedback-area').innerHTML = '';
   document.getElementById('user-translation').value = '';
 
-  // 復習モード：savedItems からランダム取得
+  // 復習モード：needsReview !== false のアイテムからランダム取得
   if (state.theme === '復習') {
-    if (state.savedItems.length === 0) {
+    const reviewItems = state.savedItems.filter(i => i.needsReview !== false);
+    if (reviewItems.length === 0) {
       document.getElementById('jp-sentence').textContent = '「問題を生成」を押してください';
       btn.disabled = false;
       return;
     }
-    const item = state.savedItems[Math.floor(Math.random() * state.savedItems.length)];
+    const item = reviewItems[Math.floor(Math.random() * reviewItems.length)];
     state.currentJp = item.jp;
     document.getElementById('jp-sentence').textContent = item.jp;
     btn.disabled = false;
@@ -673,19 +698,30 @@ function renderFeedback(data, userEn) {
         <div class="fb-label phrase">覚えるべき表現</div>
         ${phrasesHtml}
       </div>` : ''}
-      <button class="save-btn" id="save-btn" onclick="saveToReview()">この表現を保存する</button>
+      <div class="result-row">
+        <button class="result-btn result-bad" id="result-bad" onclick="markResult('bad')">できなかった</button>
+        <button class="result-btn result-good" id="result-good" onclick="markResult('good')">できた</button>
+      </div>
       <button class="next-btn" onclick="nextQuestion()">次の問題へ</button>
     </div>
   `;
 }
 
-function saveToReview() {
+function markResult(result) {
   if (!state.currentFeedback) return;
-  const item = { ...state.currentFeedback, date: todayStr(), id: Date.now() };
-  state.savedItems.unshift(item);
+  const needsReview = result === 'bad';
+  const item = { ...state.currentFeedback, date: todayStr(), id: Date.now(), needsReview };
+  const idx = state.savedItems.findIndex(i => i.jp === item.jp);
+  if (idx >= 0) {
+    state.savedItems[idx] = item;
+  } else {
+    state.savedItems.unshift(item);
+  }
   localStorage.setItem('eikaiwa_saved', JSON.stringify(state.savedItems));
-  document.getElementById('save-btn').textContent = '保存しました ✓';
-  document.getElementById('save-btn').disabled = true;
+  document.getElementById('result-bad').disabled = true;
+  document.getElementById('result-good').disabled = true;
+  const label = result === 'bad' ? 'できなかった ✓' : 'できた ✓';
+  document.getElementById('result-' + result).textContent = label;
 }
 
 function nextQuestion() {
@@ -698,23 +734,42 @@ function nextQuestion() {
 
 function renderReview() {
   const el = document.getElementById('review-list');
-  if (state.savedItems.length === 0) {
-    el.innerHTML = '<div class="review-empty">保存した表現がまだありません。<br>練習後に「保存」を押すと<br>ここに追加されます。</div>';
+  const isNeeds = state.reviewFilter === 'needs';
+  const items = state.savedItems.filter(i => isNeeds ? i.needsReview !== false : i.needsReview === false);
+
+  const toggleHtml = `
+    <div class="review-toggle">
+      <button class="toggle-btn ${isNeeds ? 'active' : ''}" onclick="setReviewFilter('needs')">要復習</button>
+      <button class="toggle-btn ${!isNeeds ? 'active' : ''}" onclick="setReviewFilter('mastered')">習得済み</button>
+    </div>`;
+
+  if (items.length === 0) {
+    const emptyMsg = isNeeds
+      ? '要復習の表現はありません。<br>添削後に「できなかった」を押すと追加されます。'
+      : '習得済みの表現はまだありません。';
+    el.innerHTML = toggleHtml + `<div class="review-empty">${emptyMsg}</div>`;
     return;
   }
-  el.innerHTML = state.savedItems.map((item, i) => `
+
+  el.innerHTML = toggleHtml + items.map(item => `
     <div class="review-item">
-      <div class="review-badge">要復習</div>
+      <div class="review-badge">${item.needsReview === undefined ? '未評価' : isNeeds ? '要復習' : '習得済み'}</div>
       <div class="review-jp">${item.jp}</div>
       <div class="review-en">${item.modelAnswer}</div>
       <div class="review-date">${item.date} 保存</div>
-      <button class="rechallenge-btn" onclick="rechallenge(${i})">再チャレンジ ↗</button>
+      <button class="rechallenge-btn" onclick="rechallenge(${item.id})">再チャレンジ ↗</button>
     </div>
   `).join('');
 }
 
-function rechallenge(i) {
-  const item = state.savedItems[i];
+function setReviewFilter(filter) {
+  state.reviewFilter = filter;
+  renderReview();
+}
+
+function rechallenge(id) {
+  const item = state.savedItems.find(i => i.id === id);
+  if (!item) return;
   showPage('practice');
   document.querySelector('.nav-btn').classList.add('active');
   state.currentJp = item.jp;
