@@ -402,6 +402,7 @@ let state = {
   currentFeedback: null,
   theme: 'セキュリティ Biz',
   reviewFilter: 'needs',
+  questions: [],
   savedItems: JSON.parse(localStorage.getItem('eikaiwa_saved') || '[]'),
 };
 
@@ -572,43 +573,44 @@ async function generateSentence() {
 
   btn.textContent = '生成中...';
 
-  if (!state.apiKey) {
-    const samples = {
-      'セキュリティ Biz': [
-        'このシステムへの不正アクセスが先週検知されました。',
-        'クライアントにリスク評価の結果を報告する必要があります。',
-        'パッチを早急に適用しないと、脆弱性が悪用される可能性があります。',
-        'セキュリティポリシーの見直しを四半期ごとに実施しています。',
-        'インシデント発生時は、まず影響範囲の特定が最優先です。',
-      ],
-      'ビジネス': ['会議は予定より30分遅れて始まった。','このプロジェクトの締め切りは来週の金曜日です。','ご提案についてご検討いただけますか。'],
-      '日常': ['昨日、駅で偶然昔の友人に会った。','彼女は毎朝コーヒーを飲みながら新聞を読む。','先週末は家族で公園にピクニックに行った。'],
-      '旅行': ['初めて海外を一人旅したとき、とても緊張した。','その美術館には世界中から観光客が訪れる。','荷物を忘れてホテルに引き返した。'],
-      'ニュース': ['その政策は多くの国民から批判を受けている。','新しい技術が医療の現場を変えつつある。','気候変動への対策が急務となっている。'],
-    };
-    const list = samples[state.theme] || samples['セキュリティ Biz'];
-    state.currentJp = list[Math.floor(Math.random()*list.length)];
-    document.getElementById('jp-sentence').textContent = state.currentJp;
+  // セキュリティ Biz：APIキー不要、questions.json からランダム出題
+  if (state.theme === 'セキュリティ Biz') {
+    const pool = state.questions.length > 0 ? state.questions : [
+      { jp: 'このシステムへの不正アクセスが先週検知されました。' },
+      { jp: 'クライアントにリスク評価の結果を報告する必要があります。' },
+      { jp: 'インシデント発生時は、まず影響範囲の特定が最優先です。' },
+    ];
+    const q = pool[Math.floor(Math.random() * pool.length)];
+    state.currentJp = q.jp;
+    document.getElementById('jp-sentence').textContent = q.jp;
     btn.disabled = false;
     btn.textContent = '＋ 新しい問題文を生成';
     return;
   }
 
-try {
+  if (!state.apiKey) {
+    const samples = {
+      'ビジネス': ['会議は予定より30分遅れて始まった。','このプロジェクトの締め切りは来週の金曜日です。','ご提案についてご検討いただけますか。'],
+      '日常': ['昨日、駅で偶然昔の友人に会った。','彼女は毎朝コーヒーを飲みながら新聞を読む。','先週末は家族で公園にピクニックに行った。'],
+      '旅行': ['初めて海外を一人旅したとき、とても緊張した。','その美術館には世界中から観光客が訪れる。','荷物を忘れてホテルに引き返した。'],
+      'ニュース': ['その政策は多くの国民から批判を受けている。','新しい技術が医療の現場を変えつつある。','気候変動への対策が急務となっている。'],
+    };
+    const list = samples[state.theme] || [];
+    state.currentJp = list[Math.floor(Math.random()*list.length)] || '';
+    document.getElementById('jp-sentence').textContent = state.currentJp || '※ APIキーを設定してください';
+    btn.disabled = false;
+    btn.textContent = '＋ 新しい問題文を生成';
+    return;
+  }
+
+  try {
     const themeCategories = {
       'ビジネス': '会議・報告、メール・連絡、依頼・交渉、スケジュール調整、フィードバック、提案・説明',
       '日常':     '移動・交通、食事・カフェ、家事・生活、友人・家族との会話、体調・気分、趣味・週末、小さなトラブル、独り言',
       '旅行':     'チェックイン・ホテル、道を聞く、レストランでの注文、交通機関、観光・案内、トラブル対応、お土産・ショッピング',
       'ニュース':  '社会・政治、経済・ビジネス、テクノロジー、環境・気候、スポーツ、国際情勢、身近な出来事',
     };
-    const themePrompt = state.theme === 'セキュリティ Biz'
-      ? `英語アウトプット練習用に、日本語の短文を1文だけ生成してください。
-    条件：
-      - 15〜25字程度、重くしない
-      - 仕事（セキュリティ/会議/クライアント対応）多め、意見系はたまに
-      - 毎回異なるシナリオ（報告・依頼・調整・懸念・提案・雑談・意見）からランダムに選ぶ
-      - 文だけ返す。説明不要。`
-            : `英語アウトプット練習用に、日本語の短文を1文だけ生成してください。
+    const themePrompt = `英語アウトプット練習用に、日本語の短文を1文だけ生成してください。
       条件：
       - 15〜25字程度
       - 以下のカテゴリからランダムに1つ選ぶ（毎回違うカテゴリにすること）：${themeCategories[state.theme] || ''}
@@ -620,8 +622,8 @@ try {
     state.currentJp = text.trim();
     document.getElementById('jp-sentence').textContent = state.currentJp;
   } catch(e) {
-    document.getElementById('jp-sentence').textContent = '※ APIキーを設定してください（デモ文）：昨日、駅で偶然昔の友人に会った。';
-    state.currentJp = '昨日、駅で偶然昔の友人に会った。';
+    document.getElementById('jp-sentence').textContent = '※ エラーが発生しました。APIキーを確認してください。';
+    state.currentJp = '';
   }
   btn.disabled = false;
   btn.textContent = '＋ 新しい問題文を生成';
@@ -799,6 +801,10 @@ function renderReading() {
 if (state.apiKey) {
   document.getElementById('api-key-section').innerHTML = '<div style="font-size:12px;color:var(--teal);margin-bottom:12px;text-align:center;">✓ APIキーが設定されています</div>';
 }
+fetch('./questions.json')
+  .then(r => r.json())
+  .then(data => { state.questions = data.questions || []; })
+  .catch(() => {});
 initStreak();
 </script>
 </body>
